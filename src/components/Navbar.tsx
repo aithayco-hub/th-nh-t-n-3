@@ -10,9 +10,12 @@ import {
   RotateCcw,
   Sparkles,
   Download,
-  Info
+  Info,
+  Database,
+  Cloud
 } from 'lucide-react';
 import { ActiveScreen, ClassMetadata } from '../types';
+import { isSupabaseConfigured } from '../utils/supabase';
 
 interface NavbarProps {
   currentScreen: ActiveScreen;
@@ -24,6 +27,7 @@ interface NavbarProps {
   onShowYearConfig?: () => void;
   onOpenClassInfo?: () => void;
   onOpenYearConfig?: () => void;
+  onOpenDbSync?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,6 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onShowYearConfig,
   onOpenClassInfo,
   onOpenYearConfig,
+  onOpenDbSync,
 }) => {
   const safeMetadata: ClassMetadata = metadata || {
     schoolName: 'THCS Phan Bội Châu',
@@ -49,6 +54,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   const handleYearConfig = onShowYearConfig || onOpenYearConfig || (() => {});
   const handleUpdate = onUpdateMetadata || (() => {});
   const handleReset = onResetData || (() => {});
+  const handleDbSync = onOpenDbSync || (() => {});
+
+  const isSupabaseReady = isSupabaseConfigured();
 
   const [yearDropdownOpen, setYearDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -151,6 +159,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right: School Year Dropdown & Teacher Info */}
           <div className="flex items-center gap-2">
+            {/* Database / Cloud Sync Button */}
+            <button
+              id="btn-cloud-sync"
+              onClick={handleDbSync}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-all border shadow-2xs ${
+                isSupabaseReady
+                  ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+              title={isSupabaseReady ? 'Đã kết nối Supabase Cloud (bấm để đồng bộ)' : 'Chưa kết nối Supabase (bấm để xem hướng dẫn)'}
+            >
+              <Database className={`w-3.5 h-3.5 ${isSupabaseReady ? 'text-emerald-600' : 'text-slate-500'}`} />
+              <span className="hidden sm:inline">
+                {isSupabaseReady ? 'Supabase' : 'Lưu trữ Cloud'}
+              </span>
+              <span className={`w-2 h-2 rounded-full ${isSupabaseReady ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+            </button>
+
             {/* Year Selector */}
             <div className="relative" ref={yearRef}>
               <button
@@ -241,6 +267,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <CalendarDays className="w-4 h-4 text-indigo-500" />
                       <span>Cấu hình học kỳ & phân công</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        handleDbSync();
+                        setUserMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors"
+                    >
+                      <Database className="w-4 h-4 text-emerald-600" />
+                      <span className="flex-1 text-left">Đồng bộ Supabase Cloud</span>
+                      {isSupabaseReady ? (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full">Bật</span>
+                      ) : (
+                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded-full">Chưa kết nối</span>
+                      )}
                     </button>
                   </div>
 

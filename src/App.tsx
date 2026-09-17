@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ScreenType, Student, ClassMetadata, DailyAttendance, ConductRecord, FinanceRecord, ContactRecord, RewardDisciplineRecord, ScheduleEvent } from './types';
 import {
+  AppState,
   getStoredStudents,
   setStoredStudents,
   getStoredAttendance,
@@ -17,9 +18,11 @@ import {
   setStoredSchedule,
   getStoredMetadata,
   setStoredMetadata,
+  saveStateToLocalStorage,
   resetToSampleData,
   getTodayDateString,
 } from './utils/storage';
+import { isSupabaseConfigured, loadDataFromSupabase, saveDataToSupabase } from './utils/supabase';
 import { Navbar } from './components/Navbar';
 import { ClassHeader } from './components/ClassHeader';
 import { DashboardView } from './components/DashboardView';
@@ -33,6 +36,7 @@ import { AwardsDisciplineView } from './components/AwardsDisciplineView';
 import { ScheduleView } from './components/ScheduleView';
 import { YearConfigModal } from './components/YearConfigModal';
 import { ClassInfoModal } from './components/ClassInfoModal';
+import { DatabaseSyncModal } from './components/DatabaseSyncModal';
 import { Toast, ToastMessage } from './components/Toast';
 
 export default function App() {
@@ -51,6 +55,7 @@ export default function App() {
   // UI Modals & Toasts
   const [isYearConfigOpen, setIsYearConfigOpen] = useState(false);
   const [isClassInfoOpen, setIsClassInfoOpen] = useState(false);
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -66,6 +71,93 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentScreen]);
+
+  // Supabase sync tracking
+  const isTableMissingRef = useRef(false);
+
+  // Initial Load from Supabase (if configured)
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      loadDataFromSupabase().then((res) => {
+        if (res.data) {
+          isTableMissingRef.current = false;
+          const d = res.data;
+          if (d.metadata) setMetadata(d.metadata);
+          if (d.students) setStudents(d.students);
+          if (d.attendance) setAttendanceRecords(d.attendance);
+          if (d.conduct) setConductList(d.conduct);
+          if (d.finance) setFinanceList(d.finance);
+          if (d.contacts) setContactsList(d.contacts);
+          if (d.awards) setAwardsList(d.awards);
+          if (d.schedule) setScheduleList(d.schedule);
+          saveStateToLocalStorage(d);
+          showToast('Đã kết nối và tải dữ liệu từ Supabase Cloud!', 'success');
+        } else if (res.isTableMissing) {
+          isTableMissingRef.current = true;
+          showToast('Chưa tạo bảng class_data trên Supabase. Bấm "Lưu trữ Cloud" để xem hướng dẫn tạo bảng.', 'info');
+        } else if (!res.error) {
+          // Initialize empty Supabase table with initial state
+          const current: AppState = {
+            metadata,
+            students,
+            attendance: attendanceRecords,
+            conduct: conductList,
+            finance: financeList,
+            contacts: contactsList,
+            awards: awardsList,
+            schedule: scheduleList,
+          };
+          saveDataToSupabase(current).then((saveRes) => {
+            if (saveRes.isTableMissing) {
+              isTableMissingRef.current = true;
+            }
+          });
+        }
+      });
+    }
+  }, []);
+
+  // Background Debounced Auto-Sync to Supabase when state changes
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!isSupabaseConfigured()) return;
+    if (isTableMissingRef.current) return;
+
+    const timer = setTimeout(() => {
+      saveDataToSupabase({
+        metadata,
+        students,
+        attendance: attendanceRecords,
+        conduct: conductList,
+        finance: financeList,
+        contacts: contactsList,
+        awards: awardsList,
+        schedule: scheduleList,
+      }).then((res) => {
+        if (res.isTableMissing) {
+          isTableMissingRef.current = true;
+        }
+      });
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [students, attendanceRecords, conductList, financeList, contactsList, awardsList, scheduleList, metadata]);
+
+  const handleApplyRemoteState = (newState: AppState) => {
+    isTableMissingRef.current = false;
+    if (newState.metadata) setMetadata(newState.metadata);
+    if (newState.students) setStudents(newState.students);
+    if (newState.attendance) setAttendanceRecords(newState.attendance);
+    if (newState.conduct) setConductList(newState.conduct);
+    if (newState.finance) setFinanceList(newState.finance);
+    if (newState.contacts) setContactsList(newState.contacts);
+    if (newState.awards) setAwardsList(newState.awards);
+    if (newState.schedule) setScheduleList(newState.schedule);
+  };
 
   // --- Student Handlers ---
   const handleAddStudent = (newS: Omit<Student, 'id' | 'orderNumber'>) => {
@@ -290,6 +382,7 @@ export default function App() {
         onResetData={handleResetSampleData}
         onOpenYearConfig={() => setIsYearConfigOpen(true)}
         onOpenClassInfo={() => setIsClassInfoOpen(true)}
+        onOpenDbSync={() => setIsDbModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -418,14 +511,21 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             <button
+              onClick={() => setIsDbModalOpen(true)}
+              className="text-slate-500 hover:text-emerald-700 transition-colors font-medium flex items-center gap-1.5"
+              title="Xem thông tin và cấu hình đồng bộ Supabase"
+            >
+              <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured() ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+              <span>{isSupabaseConfigured() ? 'Supabase Cloud: Đang kết nối' : 'Lưu trữ cục bộ (Bấm để kết nối Supabase)'}</span>
+            </button>
+            <span>•</span>
+            <button
               onClick={handleResetSampleData}
               className="text-slate-400 hover:text-blue-600 transition-colors underline"
               title="Khôi phục lại dữ liệu mẫu lớp 9A2"
             >
               Nạp lại dữ liệu mẫu
             </button>
-            <span>•</span>
-            <span className="text-slate-400">Lưu trữ cục bộ LocalStorage</span>
           </div>
         </div>
       </footer>
@@ -444,6 +544,23 @@ export default function App() {
         students={students}
         isOpen={isClassInfoOpen}
         onClose={() => setIsClassInfoOpen(false)}
+      />
+
+      <DatabaseSyncModal
+        isOpen={isDbModalOpen}
+        onClose={() => setIsDbModalOpen(false)}
+        currentState={{
+          metadata,
+          students,
+          attendance: attendanceRecords,
+          conduct: conductList,
+          finance: financeList,
+          contacts: contactsList,
+          awards: awardsList,
+          schedule: scheduleList,
+        }}
+        onApplyRemoteState={handleApplyRemoteState}
+        showToast={showToast}
       />
     </div>
   );
