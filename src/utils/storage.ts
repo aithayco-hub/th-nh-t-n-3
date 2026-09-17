@@ -47,7 +47,7 @@ export const loadInitialState = (): AppState => {
       const parsed = JSON.parse(raw);
       return {
         metadata: { ...INITIAL_METADATA, ...(parsed.metadata || {}) },
-        students: parsed.students && parsed.students.length > 0 ? parsed.students : INITIAL_STUDENTS,
+        students: Array.isArray(parsed.students) ? parsed.students : INITIAL_STUDENTS,
         attendance: parsed.attendance || { [INITIAL_ATTENDANCE.date]: INITIAL_ATTENDANCE },
         conduct: parsed.conduct || INITIAL_CONDUCT,
         finance: parsed.finance || INITIAL_FINANCE,
