@@ -1,0 +1,8 @@
+{
+  "name": "Remix GIÁO VIÊN CHỦ NHIỆM – LỚP 9A2",
+  "description": "Ứng dụng quản lý công tác chủ nhiệm Lớp 9A2, Trường THCS Phan Bội Châu - GVCN: Dương Thành Tín",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
