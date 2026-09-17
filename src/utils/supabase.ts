@@ -260,28 +260,48 @@ export const onAuthChange = (callback: (user: AuthTeacher | null) => void) => {
   }
 };
 
-export const SUPABASE_SETUP_SQL = `-- BƯỚC TẠO BẢNG LƯU TRỮ DỮ LIỆU LỚP HỌC TRÊN SUPABASE
--- 1. Vào mục 'SQL Editor' ở menu bên trái Supabase
--- 2. Dán toàn bộ mã này vào và nhấn nút 'RUN' (màu xanh lá):
+export const SUPABASE_SETUP_SQL = `-- BƯỚC TẠO BẢNG LƯU TRỮ DỮ LIỆU VÀ TÀI KHOẢN TRÊN SUPABASE
+-- 1. Vào mục 'SQL Editor' ở menu bên trái Supabase Dashboard
+-- 2. Dán toàn bộ đoạn mã này vào và nhấn nút 'RUN' (màu xanh lá):
 
--- Tạo bảng class_data
+-- 1. Tạo bảng lưu trữ dữ liệu lớp học (Học sinh, điểm danh, nề nếp, sổ liên lạc...)
 CREATE TABLE IF NOT EXISTS public.class_data (
   id TEXT PRIMARY KEY DEFAULT 'main_class',
   data JSONB NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Cấp quyền truy cập bảng cho vai trò công khai (anon) và người dùng xác thực (authenticated)
+-- 2. Tạo bảng lưu trữ tài khoản giáo viên (Tên đăng nhập & Mật khẩu)
+CREATE TABLE IF NOT EXISTS public.teacher_accounts (
+  id TEXT PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  full_name TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Cấp quyền truy cập bảng cho vai trò công khai (anon), authenticated và service_role
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.class_data TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.teacher_accounts TO anon, authenticated, service_role;
 
 -- Kích hoạt chính sách bảo mật hàng (Row Level Security)
 ALTER TABLE public.class_data ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.teacher_accounts ENABLE ROW LEVEL SECURITY;
 
--- Cho phép ứng dụng đọc và lưu dữ liệu vào bảng
+-- Cho phép ứng dụng đọc và ghi vào 2 bảng
 DROP POLICY IF EXISTS "Cho phep truy cap class_data" ON public.class_data;
 CREATE POLICY "Cho phep truy cap class_data"
   ON public.class_data
+  FOR ALL
+  TO public
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Cho phep truy cap teacher_accounts" ON public.teacher_accounts;
+CREATE POLICY "Cho phep truy cap teacher_accounts"
+  ON public.teacher_accounts
   FOR ALL
   TO public
   USING (true)

@@ -1,3 +1,5 @@
+import { getSupabaseClient, isSupabaseConfigured } from './supabase';
+
 export interface LocalUserAccount {
   id: string;
   username: string;
@@ -36,7 +38,7 @@ const DEFAULT_ACCOUNTS: LocalUserAccount[] = [
 ];
 
 /**
- * Lấy danh sách tài khoản đã đăng ký từ localStorage
+ * Lấy danh sách tài khoản từ localStorage
  */
 export const getStoredAccounts = (): LocalUserAccount[] => {
   try {
@@ -51,7 +53,6 @@ export const getStoredAccounts = (): LocalUserAccount[] => {
     console.error('Lỗi khi đọc danh sách tài khoản từ localStorage:', e);
   }
 
-  // Khởi tạo tài khoản mặc định nếu chưa có
   try {
     localStorage.setItem(STORAGE_ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
   } catch (e) {
@@ -108,7 +109,9 @@ export const setCurrentAuthUser = (user: AuthTeacher | null) => {
 };
 
 /**
- * Đăng nhập bằng Tên đăng nhập và Mật khẩu (Không cần email)
+ * Đăng nhập bằng Tên đăng nhập và Mật khẩu:
+ * Ưu tiên kiểm tra trực tiếp từ Supabase Database (bảng teacher_accounts),
+ * nếu Supabase chưa cấu hình hoặc bảng chưa tạo thì dùng bộ nhớ cục bộ (localStorage).
  */
 export const signInWithUsername = async (
   username: string,
@@ -122,9 +125,54 @@ export const signInWithUsername = async (
     return { error: 'Vui lòng nhập mật khẩu.' };
   }
 
+  // 1. Kiểm tra trên Supabase Database nếu đã cấu hình
+  if (isSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        const { data: dbUser, error } = await client
+          .from('teacher_accounts')
+          .select('id, username, password, full_name')
+          .ilike('username', cleanUsername)
+          .maybeSingle();
+
+        if (!error && dbUser) {
+          if (dbUser.password !== password) {
+            return {
+              error: 'Mật khẩu không chính xác. Thầy Cô vui lòng kiểm tra lại.',
+            };
+          }
+          const user: AuthTeacher = {
+            id: dbUser.id,
+            username: dbUser.username,
+            name: dbUser.full_name || dbUser.username,
+          };
+          setCurrentAuthUser(user);
+
+          // Đồng bộ vào localStorage để dùng khi ngoại tuyến
+          const localAccounts = getStoredAccounts();
+          if (!localAccounts.some((a) => a.username.toLowerCase() === cleanUsername.toLowerCase())) {
+            localAccounts.push({
+              id: dbUser.id,
+              username: dbUser.username,
+              password: dbUser.password,
+              fullName: dbUser.full_name || dbUser.username,
+              createdAt: new Date().toISOString(),
+            });
+            saveStoredAccounts(localAccounts);
+          }
+
+          return { user };
+        }
+      }
+    } catch (err) {
+      console.warn('Không thể truy vấn Supabase teacher_accounts, chuyển sang lưu trữ cục bộ:', err);
+    }
+  }
+
+  // 2. Dự phòng: Kiểm tra trong bộ nhớ cục bộ
   const accounts = getStoredAccounts();
   const lowerUser = cleanUsername.toLowerCase();
-
   const found = accounts.find((acc) => acc.username.toLowerCase() === lowerUser);
 
   if (!found) {
@@ -135,7 +183,7 @@ export const signInWithUsername = async (
 
   if (found.password !== password) {
     return {
-      error: 'Mật khẩu không chính xác. Thầy Cô vui lòng kiểm tra lại (hoặc liên hệ quản trị viên/dùng tài khoản admin: 123).',
+      error: 'Mật khẩu không chính xác. Thầy Cô vui lòng kiểm tra lại.',
     };
   }
 
@@ -150,7 +198,8 @@ export const signInWithUsername = async (
 };
 
 /**
- * Tạo tài khoản mới bằng Tên đăng nhập & Mật khẩu (Không cần email)
+ * Tạo tài khoản mới bằng Tên đăng nhập & Mật khẩu:
+ * Tự động lưu vĩnh viễn vào Database Supabase (bảng teacher_accounts) và lưu cục bộ.
  */
 export const signUpWithUsername = async (
   username: string,
@@ -162,7 +211,6 @@ export const signUpWithUsername = async (
     return { error: 'Vui lòng nhập tên đăng nhập muốn tạo.' };
   }
 
-  // Tên đăng nhập tối thiểu 3 ký tự, không chứa dấu cách
   if (cleanUsername.length < 3) {
     return { error: 'Tên đăng nhập phải có ít nhất 3 ký tự.' };
   }
@@ -171,28 +219,66 @@ export const signUpWithUsername = async (
     return { error: 'Tên đăng nhập không được chứa dấu cách (khoảng trắng).' };
   }
 
-  // Mật khẩu tối thiểu 3 ký tự
   if (password.length < 3) {
     return { error: 'Mật khẩu phải có độ dài từ 3 ký tự trở lên.' };
   }
 
-  const accounts = getStoredAccounts();
-  const lowerUser = cleanUsername.toLowerCase();
-
-  const isExisted = accounts.some((acc) => acc.username.toLowerCase() === lowerUser);
-  if (isExisted) {
-    return {
-      error: `Tên đăng nhập "${cleanUsername}" đã có người đăng ký. Vui lòng chọn tên đăng nhập khác hoặc chuyển sang tab Đăng nhập.`,
-    };
-  }
-
+  const nowIso = new Date().toISOString();
   const newAccount: LocalUserAccount = {
-    id: 'user_' + Date.now().toString(),
+    id: 'usr_' + Date.now().toString() + '_' + Math.random().toString(36).substring(2, 6),
     username: cleanUsername,
     password: password,
     fullName: fullName?.trim() || cleanUsername,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
   };
+
+  // 1. Nếu đã kết nối Supabase, kiểm tra trùng lặp và lưu vào bảng teacher_accounts
+  if (isSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        // Kiểm tra xem tên đăng nhập đã tồn tại trên Supabase chưa
+        const { data: existingUser } = await client
+          .from('teacher_accounts')
+          .select('id, username')
+          .ilike('username', cleanUsername)
+          .maybeSingle();
+
+        if (existingUser) {
+          return {
+            error: `Tên đăng nhập "${cleanUsername}" đã có người sử dụng trên Database. Vui lòng chọn tên khác hoặc chuyển sang tab Đăng nhập.`,
+          };
+        }
+
+        // Lưu vào bảng teacher_accounts trên Supabase
+        const { error: insertError } = await client.from('teacher_accounts').insert({
+          id: newAccount.id,
+          username: newAccount.username,
+          password: newAccount.password,
+          full_name: newAccount.fullName,
+          created_at: nowIso,
+          updated_at: nowIso,
+        });
+
+        if (insertError) {
+          console.warn('Không thể lưu vào Supabase teacher_accounts (có thể chưa chạy SQL tạo bảng):', insertError);
+        }
+      }
+    } catch (err) {
+      console.warn('Lỗi khi kết nối Supabase Database:', err);
+    }
+  }
+
+  // 2. Lưu vào bộ nhớ cục bộ (đảm bảo hoạt động kể cả khi chưa có mạng)
+  const accounts = getStoredAccounts();
+  const lowerUser = cleanUsername.toLowerCase();
+  const isExistedLocal = accounts.some((acc) => acc.username.toLowerCase() === lowerUser);
+
+  if (isExistedLocal) {
+    return {
+      error: `Tên đăng nhập "${cleanUsername}" đã được đăng ký. Vui lòng chọn tên đăng nhập khác hoặc chuyển sang tab Đăng nhập.`,
+    };
+  }
 
   const updatedAccounts = [...accounts, newAccount];
   saveStoredAccounts(updatedAccounts);
@@ -207,12 +293,13 @@ export const signUpWithUsername = async (
 
   return {
     user: authUser,
-    message: `Tạo tài khoản "${cleanUsername}" thành công! Đang tự động đăng nhập vào sổ điện tử...`,
+    message: `Tạo tài khoản "${cleanUsername}" thành công! Đang tự động vào sổ điện tử...`,
   };
 };
 
 /**
- * Đổi / Khôi phục mật khẩu trực tiếp theo tên đăng nhập (Không cần email)
+ * Đổi / Khôi phục mật khẩu trực tiếp theo tên đăng nhập:
+ * Cập nhật cả trên Database Supabase và cục bộ.
  */
 export const resetPasswordByUsername = async (
   username: string,
@@ -226,16 +313,41 @@ export const resetPasswordByUsername = async (
     return { error: 'Mật khẩu mới phải có ít nhất 3 ký tự.' };
   }
 
+  let updatedInDb = false;
+
+  // 1. Cập nhật trên Supabase Database nếu có kết nối
+  if (isSupabaseConfigured()) {
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        const { error } = await client
+          .from('teacher_accounts')
+          .update({
+            password: newPassword,
+            updated_at: new Date().toISOString(),
+          })
+          .ilike('username', cleanUsername);
+
+        if (!error) {
+          updatedInDb = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi khi cập nhật mật khẩu trên Supabase:', e);
+    }
+  }
+
+  // 2. Cập nhật trong bộ nhớ cục bộ
   const accounts = getStoredAccounts();
   const lowerUser = cleanUsername.toLowerCase();
   const idx = accounts.findIndex((acc) => acc.username.toLowerCase() === lowerUser);
 
-  if (idx === -1) {
+  if (idx !== -1) {
+    accounts[idx].password = newPassword;
+    saveStoredAccounts(accounts);
+  } else if (!updatedInDb) {
     return { error: `Không tìm thấy tài khoản "${cleanUsername}".` };
   }
-
-  accounts[idx].password = newPassword;
-  saveStoredAccounts(accounts);
 
   return {
     message: `Đã đổi mật khẩu cho tài khoản "${cleanUsername}" thành công! Thầy Cô có thể đăng nhập ngay với mật khẩu mới.`,
