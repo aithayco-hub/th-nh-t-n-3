@@ -12,10 +12,13 @@ import {
   Download,
   Info,
   Database,
-  Cloud
+  Cloud,
+  LogIn,
+  LogOut,
+  ShieldCheck
 } from 'lucide-react';
 import { ActiveScreen, ClassMetadata } from '../types';
-import { isSupabaseConfigured } from '../utils/supabase';
+import { isSupabaseConfigured, AuthTeacher } from '../utils/supabase';
 
 interface NavbarProps {
   currentScreen: ActiveScreen;
@@ -28,6 +31,9 @@ interface NavbarProps {
   onOpenClassInfo?: () => void;
   onOpenYearConfig?: () => void;
   onOpenDbSync?: () => void;
+  currentUser?: AuthTeacher | null;
+  onOpenAuth?: () => void;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -41,6 +47,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenClassInfo,
   onOpenYearConfig,
   onOpenDbSync,
+  currentUser,
+  onOpenAuth,
+  onLogout,
 }) => {
   const safeMetadata: ClassMetadata = metadata || {
     schoolName: 'THCS Phan Bội Châu',
@@ -224,13 +233,27 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-slate-50 transition-all"
                 title="Thông tin giáo viên & Tùy chọn"
               >
-                <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                  DTT
-                </div>
+                {currentUser?.avatarUrl ? (
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt={currentUser.name || 'GVCN'}
+                    className="w-7 h-7 rounded-lg object-cover border border-emerald-300 shadow-2xs"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                    currentUser ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'DTT'}
+                  </div>
+                )}
                 <div className="hidden xl:block text-left">
-                  <span className="block text-xs font-bold text-slate-800 leading-none">
-                    Thầy {safeMetadata.teacherName}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="block text-xs font-bold text-slate-800 leading-none truncate max-w-[130px]">
+                      {currentUser?.name || `Thầy ${safeMetadata.teacherName}`}
+                    </span>
+                    {currentUser && <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />}
+                  </div>
                   <span className="block text-[11px] text-slate-500 mt-0.5">
                     GVCN {safeMetadata.className}
                   </span>
@@ -239,14 +262,44 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95">
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95">
                   <div className="px-3 py-2.5 border-b border-slate-100">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Giáo viên chủ nhiệm</p>
-                    <p className="text-sm font-bold text-slate-900 mt-0.5">{safeMetadata.teacherName}</p>
-                    <p className="text-xs text-slate-500">{safeMetadata.className} • {safeMetadata.schoolName}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Giáo viên chủ nhiệm</p>
+                      {currentUser ? (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                          <ShieldCheck className="w-2.5 h-2.5" /> Google
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-slate-100 text-slate-600 font-medium px-1.5 py-0.5 rounded-full">
+                          Ngoại tuyến
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-slate-900 mt-0.5 truncate">
+                      {currentUser?.name || safeMetadata.teacherName}
+                    </p>
+                    {currentUser?.email ? (
+                      <p className="text-xs text-slate-500 truncate">{currentUser.email}</p>
+                    ) : (
+                      <p className="text-xs text-slate-500">{safeMetadata.className} • {safeMetadata.schoolName}</p>
+                    )}
                   </div>
 
                   <div className="py-1">
+                    {currentUser && (
+                      <button
+                        onClick={() => {
+                          if (onOpenAuth) onOpenAuth();
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
+                        <UserCheck className="w-4 h-4 text-emerald-600" />
+                        <span className="flex-1 text-left">Hồ sơ Google giáo viên</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => {
                         handleClassInfo();
@@ -298,9 +351,36 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <span>Đặt lại dữ liệu mẫu lớp 9A2</span>
                     </button>
                   </div>
+
+                  <div className="border-t border-slate-100 pt-1 mt-1">
+                    <button
+                      id="btn-menu-logout"
+                      onClick={() => {
+                        if (onLogout) onLogout();
+                        setUserMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-semibold"
+                    >
+                      <LogOut className="w-4 h-4 text-red-500" />
+                      <span className="flex-1 text-left">
+                        {currentUser ? 'Đăng xuất tài khoản' : 'Thoát / Đăng xuất'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Direct Logout Button on header */}
+            <button
+              id="btn-header-logout"
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs sm:text-sm font-semibold transition-all shadow-2xs cursor-pointer"
+              title={currentUser ? 'Đăng xuất tài khoản Google' : 'Thoát ra màn hình đăng nhập ngoài'}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Đăng xuất</span>
+            </button>
           </div>
         </div>
       </div>

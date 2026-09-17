@@ -22,8 +22,18 @@ import {
   resetToSampleData,
   getTodayDateString,
 } from './utils/storage';
-import { isSupabaseConfigured, loadDataFromSupabase, saveDataToSupabase } from './utils/supabase';
+import {
+  isSupabaseConfigured,
+  loadDataFromSupabase,
+  saveDataToSupabase,
+  getAuthUser,
+  onAuthChange,
+  signOutSupabase,
+  signInWithGoogle,
+  AuthTeacher
+} from './utils/supabase';
 import { Navbar } from './components/Navbar';
+import { LoginScreen } from './components/LoginScreen';
 import { ClassHeader } from './components/ClassHeader';
 import { DashboardView } from './components/DashboardView';
 import { AttendanceView } from './components/AttendanceView';
@@ -37,6 +47,7 @@ import { ScheduleView } from './components/ScheduleView';
 import { YearConfigModal } from './components/YearConfigModal';
 import { ClassInfoModal } from './components/ClassInfoModal';
 import { DatabaseSyncModal } from './components/DatabaseSyncModal';
+import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { Toast, ToastMessage } from './components/Toast';
 
 export default function App() {
@@ -56,6 +67,11 @@ export default function App() {
   const [isYearConfigOpen, setIsYearConfigOpen] = useState(false);
   const [isClassInfoOpen, setIsClassInfoOpen] = useState(false);
   const [isDbModalOpen, setIsDbModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthTeacher | null>(null);
+  const [hasEnteredApp, setHasEnteredApp] = useState<boolean>(() => {
+    return Boolean(sessionStorage.getItem('entered_app') === 'true');
+  });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -71,6 +87,27 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentScreen]);
+
+  // Check current auth user on load & listen for auth state changes
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      getAuthUser().then((user) => {
+        if (user) {
+          setCurrentUser(user);
+          setHasEnteredApp(true);
+        }
+      });
+      const unsubscribe = onAuthChange((user) => {
+        setCurrentUser(user);
+        if (user) {
+          setHasEnteredApp(true);
+        }
+      });
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, []);
 
   // Supabase sync tracking
   const isTableMissingRef = useRef(false);
@@ -368,6 +405,66 @@ export default function App() {
     }
   };
 
+  const handleLoginGoogle = async () => {
+    if (!isSupabaseConfigured()) {
+      setIsDbModalOpen(true);
+      showToast('Thầy cô cần cấu hình kết nối Supabase Cloud để kích hoạt đăng nhập Google.', 'info');
+      return;
+    }
+    const res = await signInWithGoogle();
+    if (res.error) {
+      showToast(`Không thể kết nối Google: ${res.error}`, 'error');
+    }
+  };
+
+  const handleEnterGuest = () => {
+    sessionStorage.setItem('entered_app', 'true');
+    setHasEnteredApp(true);
+    showToast('Chào mừng thầy cô vào Sổ tay điện tử Lớp 9A2!', 'success');
+  };
+
+  const handleLogout = async () => {
+    if (currentUser) {
+      await signOutSupabase();
+    }
+    sessionStorage.removeItem('entered_app');
+    setCurrentUser(null);
+    setHasEnteredApp(false);
+    showToast('Đã đăng xuất và quay về màn hình ngoài.', 'info');
+  };
+
+  // If user hasn't logged in or entered the app, display the external Login Screen
+  if (!hasEnteredApp && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 font-sans selection:bg-blue-600 selection:text-white">
+        <Toast toasts={toasts} onRemove={removeToast} />
+        <LoginScreen
+          metadata={metadata}
+          onLoginGoogle={handleLoginGoogle}
+          onEnterGuest={handleEnterGuest}
+          isSupabaseReady={isSupabaseConfigured()}
+          onOpenDbSync={() => setIsDbModalOpen(true)}
+        />
+        <DatabaseSyncModal
+          isOpen={isDbModalOpen}
+          onClose={() => setIsDbModalOpen(false)}
+          currentState={{
+            metadata,
+            students,
+            attendance: attendanceRecords,
+            conduct: conductList,
+            finance: financeList,
+            contacts: contactsList,
+            awards: awardsList,
+            schedule: scheduleList,
+          }}
+          onApplyRemoteState={handleApplyRemoteState}
+          showToast={showToast}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/60 text-slate-800 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* Toast notifications container */}
@@ -383,6 +480,9 @@ export default function App() {
         onOpenYearConfig={() => setIsYearConfigOpen(true)}
         onOpenClassInfo={() => setIsClassInfoOpen(true)}
         onOpenDbSync={() => setIsDbModalOpen(true)}
+        currentUser={currentUser}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Container */}
@@ -511,6 +611,15 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             <button
+              onClick={handleLogout}
+              className="text-red-500 hover:text-red-700 transition-colors font-semibold flex items-center gap-1.5"
+              title="Đăng xuất / Thoát ra màn hình ngoài"
+            >
+              <span className="w-2 h-2 rounded-full bg-red-400" />
+              <span>{currentUser ? `Đăng xuất (${currentUser.name})` : 'Đăng xuất / Thoát ra ngoài'}</span>
+            </button>
+            <span>•</span>
+            <button
               onClick={() => setIsDbModalOpen(true)}
               className="text-slate-500 hover:text-emerald-700 transition-colors font-medium flex items-center gap-1.5"
               title="Xem thông tin và cấu hình đồng bộ Supabase"
@@ -560,6 +669,14 @@ export default function App() {
           schedule: scheduleList,
         }}
         onApplyRemoteState={handleApplyRemoteState}
+        showToast={showToast}
+      />
+
+      <GoogleAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        onSyncTeacherName={(name) => handleSaveMetadata({ teacherName: name, headTeacher: name })}
         showToast={showToast}
       />
     </div>

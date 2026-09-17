@@ -49,11 +49,107 @@ export const getSupabaseClient = (): SupabaseClient | null => {
         schema: 'public',
       },
       auth: {
-        persistSession: false,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
       },
     });
   }
   return clientInstance;
+};
+
+export interface AuthTeacher {
+  id: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+}
+
+export const extractTeacherProfile = (user: any): AuthTeacher | null => {
+  if (!user) return null;
+  const metadata = user.user_metadata || {};
+  return {
+    id: user.id,
+    email: user.email,
+    name: metadata.full_name || metadata.name || metadata.user_name || (user.email ? user.email.split('@')[0] : 'Giáo viên'),
+    avatarUrl: metadata.avatar_url || metadata.picture,
+  };
+};
+
+/**
+ * Đăng nhập với tài khoản Google qua Supabase
+ */
+export const signInWithGoogle = async (): Promise<{ error?: string }> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { error: 'Chưa cấu hình Supabase URL và Anon Key trên ứng dụng.' };
+  }
+  try {
+    const redirectUrl = window.location.origin;
+    const { error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        queryParams: {
+          prompt: 'select_account',
+          access_type: 'offline',
+        },
+      },
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    return {};
+  } catch (err: any) {
+    return { error: err?.message || 'Không thể mở cửa sổ đăng nhập Google' };
+  }
+};
+
+/**
+ * Đăng xuất khỏi tài khoản Supabase
+ */
+export const signOutSupabase = async (): Promise<{ error?: string }> => {
+  const client = getSupabaseClient();
+  if (!client) return {};
+  try {
+    const { error } = await client.auth.signOut();
+    if (error) return { error: error.message };
+    return {};
+  } catch (err: any) {
+    return { error: err?.message || 'Lỗi khi đăng xuất' };
+  }
+};
+
+/**
+ * Lấy thông tin tài khoản hiện tại
+ */
+export const getAuthUser = async (): Promise<AuthTeacher | null> => {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  try {
+    const { data } = await client.auth.getUser();
+    return extractTeacherProfile(data?.user);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Lắng nghe thay đổi trạng thái đăng nhập
+ */
+export const onAuthChange = (callback: (user: AuthTeacher | null) => void) => {
+  const client = getSupabaseClient();
+  if (!client) return () => {};
+  try {
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+      callback(extractTeacherProfile(session?.user));
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  } catch {
+    return () => {};
+  }
 };
 
 export const SUPABASE_SETUP_SQL = `-- BƯỚC TẠO BẢNG LƯU TRỮ DỮ LIỆU LỚP HỌC TRÊN SUPABASE
