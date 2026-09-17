@@ -106,6 +106,113 @@ export const signInWithGoogle = async (): Promise<{ error?: string }> => {
 };
 
 /**
+ * Đăng nhập bằng Email & Mật khẩu
+ */
+export const signInWithEmail = async (
+  email: string,
+  password: string
+): Promise<{ error?: string; user?: AuthTeacher | null }> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { error: 'Chưa cấu hình Supabase URL và Anon Key trên ứng dụng.' };
+  }
+  try {
+    const { data, error } = await client.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) {
+      let msg = error.message;
+      if (msg.includes('Invalid login credentials') || msg.toLowerCase().includes('invalid grant')) {
+        msg = 'Email hoặc mật khẩu không chính xác. Thầy Cô vui lòng kiểm tra lại.';
+      } else if (msg.includes('Email not confirmed')) {
+        msg = 'Email chưa được kích hoạt. Thầy Cô vui lòng kiểm tra hộp thư (kể cả mục Spam) để kích hoạt, hoặc tắt yêu cầu Confirm Email trong bảng điều khiển Supabase Auth.';
+      }
+      return { error: msg };
+    }
+    return { user: extractTeacherProfile(data?.user) };
+  } catch (err: any) {
+    return { error: err?.message || 'Lỗi khi đăng nhập bằng email.' };
+  }
+};
+
+/**
+ * Đăng ký tài khoản mới bằng Email & Mật khẩu
+ */
+export const signUpWithEmail = async (
+  email: string,
+  password: string,
+  fullName?: string
+): Promise<{ error?: string; message?: string; user?: AuthTeacher | null }> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { error: 'Chưa cấu hình Supabase URL và Anon Key trên ứng dụng.' };
+  }
+  try {
+    const { data, error } = await client.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          full_name: fullName?.trim() || '',
+          name: fullName?.trim() || '',
+        },
+      },
+    });
+    if (error) {
+      let msg = error.message;
+      if (msg.includes('User already registered') || msg.includes('already exists')) {
+        msg = 'Email này đã được đăng ký tài khoản. Thầy Cô vui lòng chuyển sang tab "Đăng nhập".';
+      } else if (msg.includes('Password should be at least')) {
+        msg = 'Mật khẩu phải có độ dài tối thiểu 6 ký tự.';
+      }
+      return { error: msg };
+    }
+
+    if (data.session) {
+      return {
+        user: extractTeacherProfile(data.user),
+        message: 'Đăng ký tài khoản và tự động đăng nhập thành công!',
+      };
+    } else {
+      return {
+        user: extractTeacherProfile(data.user),
+        message:
+          'Đăng ký tài khoản thành công! Nếu dự án Supabase bật xác nhận email, Thầy Cô vui lòng mở hộp thư email để kích hoạt trước khi đăng nhập.',
+      };
+    }
+  } catch (err: any) {
+    return { error: err?.message || 'Lỗi khi tạo tài khoản mới.' };
+  }
+};
+
+/**
+ * Gửi email yêu cầu đặt lại mật khẩu
+ */
+export const resetPasswordForEmail = async (
+  email: string
+): Promise<{ error?: string; message?: string }> => {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { error: 'Chưa cấu hình Supabase URL và Anon Key trên ứng dụng.' };
+  }
+  try {
+    const { error } = await client.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+    if (error) {
+      return { error: error.message };
+    }
+    return {
+      message:
+        'Đã gửi liên kết đặt lại mật khẩu về email của Thầy Cô. Vui lòng kiểm tra hộp thư (kể cả mục Spam)!',
+    };
+  } catch (err: any) {
+    return { error: err?.message || 'Lỗi khi gửi yêu cầu khôi phục mật khẩu.' };
+  }
+};
+
+/**
  * Đăng xuất khỏi tài khoản Supabase
  */
 export const signOutSupabase = async (): Promise<{ error?: string }> => {

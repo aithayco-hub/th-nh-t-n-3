@@ -441,9 +441,14 @@ export default function App() {
         <LoginScreen
           metadata={metadata}
           onLoginGoogle={handleLoginGoogle}
-          onEnterGuest={handleEnterGuest}
           isSupabaseReady={isSupabaseConfigured()}
           onOpenDbSync={() => setIsDbModalOpen(true)}
+          showToast={showToast}
+          onAuthSuccess={(user) => {
+            setCurrentUser(user);
+            setHasEnteredApp(true);
+            sessionStorage.setItem('entered_app', 'true');
+          }}
         />
         <DatabaseSyncModal
           isOpen={isDbModalOpen}
