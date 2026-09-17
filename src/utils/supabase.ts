@@ -60,6 +60,7 @@ export const getSupabaseClient = (): SupabaseClient | null => {
 
 export interface AuthTeacher {
   id: string;
+  username?: string;
   email?: string;
   name?: string;
   avatarUrl?: string;

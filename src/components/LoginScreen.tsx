@@ -8,7 +8,6 @@ import {
   Users,
   Sparkles,
   BookOpen,
-  Mail,
   Lock,
   User,
   Eye,
@@ -17,14 +16,16 @@ import {
   Loader2,
   KeyRound,
   ArrowLeft,
+  UserPlus,
+  LogIn,
 } from 'lucide-react';
 import { ClassMetadata } from '../types';
 import {
-  signInWithEmail,
-  signUpWithEmail,
-  resetPasswordForEmail,
+  signInWithUsername,
+  signUpWithUsername,
+  resetPasswordByUsername,
   AuthTeacher,
-} from '../utils/supabase';
+} from '../utils/accountAuth';
 
 interface LoginScreenProps {
   metadata?: ClassMetadata;
@@ -51,9 +52,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Form states
+  // Form states (Username & Password - Không dùng Email)
+  const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -73,9 +74,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const clearForm = () => {
     setStatusMessage(null);
+    setPassword('');
+    setConfirmPassword('');
   };
 
-  // Google Login
+  // Google Login (Tùy chọn nhanh)
   const handleGoogleClick = async () => {
     setIsLoading(true);
     setStatusMessage(null);
@@ -91,15 +94,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
-  // Email & Password Login
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  // 1. Đăng nhập bằng Tên đăng nhập & Mật khẩu (Không cần email)
+  const handleUsernameLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      setStatusMessage({ type: 'error', text: 'Vui lòng nhập địa chỉ email của Thầy Cô.' });
+    if (!username.trim()) {
+      setStatusMessage({ type: 'error', text: 'Vui lòng nhập Tên đăng nhập của Thầy Cô.' });
       return;
     }
     if (!password) {
-      setStatusMessage({ type: 'error', text: 'Vui lòng nhập mật khẩu.' });
+      setStatusMessage({ type: 'error', text: 'Vui lòng nhập Mật khẩu.' });
       return;
     }
 
@@ -107,13 +110,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setStatusMessage(null);
 
     try {
-      const res = await signInWithEmail(email, password);
+      const res = await signInWithUsername(username, password);
       if (res.error) {
         setStatusMessage({ type: 'error', text: res.error });
         if (showToast) showToast(res.error, 'error');
       } else if (res.user) {
-        setStatusMessage({ type: 'success', text: 'Đăng nhập thành công! Đang chuyển hướng...' });
-        if (showToast) showToast(`Chào mừng Thầy Cô ${res.user.name || ''}!`, 'success');
+        setStatusMessage({ type: 'success', text: 'Đăng nhập thành công! Đang chuyển hướng vào sổ điện tử...' });
+        if (showToast) showToast(`Chào mừng Thầy Cô ${res.user.name || res.user.username}!`, 'success');
         if (onAuthSuccess) {
           onAuthSuccess(res.user);
         }
@@ -121,22 +124,31 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     } catch (err: any) {
       setStatusMessage({
         type: 'error',
-        text: err?.message || 'Có lỗi xảy ra khi kết nối máy chủ xác thực.',
+        text: err?.message || 'Có lỗi xảy ra khi xác thực tài khoản.',
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Email & Password Register
-  const handleEmailRegister = async (e: React.FormEvent) => {
+  // 2. Tạo tài khoản mới bằng Tên đăng nhập & Mật khẩu (Không cần email gì cả)
+  const handleUsernameRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      setStatusMessage({ type: 'error', text: 'Vui lòng nhập địa chỉ email để tạo tài khoản.' });
+    const cleanUser = username.trim();
+    if (!cleanUser) {
+      setStatusMessage({ type: 'error', text: 'Vui lòng nhập Tên đăng nhập muốn tạo.' });
       return;
     }
-    if (password.length < 6) {
-      setStatusMessage({ type: 'error', text: 'Mật khẩu phải có độ dài từ 6 ký tự trở lên.' });
+    if (cleanUser.length < 3) {
+      setStatusMessage({ type: 'error', text: 'Tên đăng nhập phải có ít nhất 3 ký tự.' });
+      return;
+    }
+    if (/\s/.test(cleanUser)) {
+      setStatusMessage({ type: 'error', text: 'Tên đăng nhập không được có khoảng cách (dấu cách).' });
+      return;
+    }
+    if (password.length < 3) {
+      setStatusMessage({ type: 'error', text: 'Mật khẩu phải có độ dài từ 3 ký tự trở lên.' });
       return;
     }
     if (password !== confirmPassword) {
@@ -148,31 +160,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setStatusMessage(null);
 
     try {
-      const res = await signUpWithEmail(email, password, fullName);
+      const res = await signUpWithUsername(cleanUser, password, fullName);
       if (res.error) {
         setStatusMessage({ type: 'error', text: res.error });
         if (showToast) showToast(res.error, 'error');
-      } else {
+      } else if (res.user) {
         setStatusMessage({
           type: 'success',
-          text:
-            res.message ||
-            'Tạo tài khoản thành công! Thầy Cô có thể đăng nhập ngay hoặc kiểm tra email kích hoạt.',
+          text: `Tạo tài khoản "${res.user.username}" thành công! Đang vào sổ điện tử ngay...`,
         });
         if (showToast) {
-          showToast('Đăng ký tài khoản thành công!', 'success');
+          showToast(`Tạo tài khoản thành công! Xin chào ${res.user.name}`, 'success');
         }
-        if (res.user && onAuthSuccess) {
-          // If session created automatically
-          setTimeout(() => {
-            if (res.user) onAuthSuccess(res.user);
-          }, 800);
-        } else {
-          // Switch to login tab after success if email confirmation is required
-          setTimeout(() => {
-            setActiveTab('login');
-          }, 2500);
-        }
+        setTimeout(() => {
+          if (onAuthSuccess && res.user) {
+            onAuthSuccess(res.user);
+          }
+        }, 600);
       }
     } catch (err: any) {
       setStatusMessage({
@@ -184,13 +188,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
-  // Reset Password Request
-  const handleForgotPassword = async (e: React.FormEvent) => {
+  // 3. Đổi / Đặt lại mật khẩu theo Tên đăng nhập (Không cần email)
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
+    const cleanUser = username.trim();
+    if (!cleanUser) {
       setStatusMessage({
         type: 'error',
-        text: 'Vui lòng nhập địa chỉ email đã đăng ký để nhận liên kết đổi mật khẩu.',
+        text: 'Vui lòng nhập Tên đăng nhập cần đổi mật khẩu.',
+      });
+      return;
+    }
+    if (password.length < 3) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Mật khẩu mới phải có ít nhất 3 ký tự.',
+      });
+      return;
+    }
+    if (password !== confirmPassword) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Mật khẩu xác nhận không khớp.',
       });
       return;
     }
@@ -199,24 +218,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setStatusMessage(null);
 
     try {
-      const res = await resetPasswordForEmail(email);
+      const res = await resetPasswordByUsername(cleanUser, password);
       if (res.error) {
         setStatusMessage({ type: 'error', text: res.error });
+        if (showToast) showToast(res.error, 'error');
       } else {
         setStatusMessage({
           type: 'success',
-          text:
-            res.message ||
-            'Đã gửi thư khôi phục mật khẩu! Thầy Cô vui lòng kiểm tra hòm thư đến hoặc mục Spam.',
+          text: res.message || 'Đã đổi mật khẩu thành công! Thầy Cô có thể đăng nhập ngay.',
         });
         if (showToast) {
-          showToast('Đã gửi email khôi phục mật khẩu!', 'success');
+          showToast('Đã đổi mật khẩu thành công!', 'success');
         }
+        setTimeout(() => {
+          setActiveTab('login');
+          clearForm();
+        }, 1500);
       }
     } catch (err: any) {
       setStatusMessage({
         type: 'error',
-        text: err?.message || 'Lỗi khi gửi yêu cầu khôi phục mật khẩu.',
+        text: err?.message || 'Lỗi khi đặt lại mật khẩu.',
       });
     } finally {
       setIsLoading(false);
@@ -254,7 +276,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             >
               <Database className={`w-3.5 h-3.5 ${isSupabaseReady ? 'text-emerald-600' : 'text-slate-400'}`} />
               <span className="hidden sm:inline">
-                {isSupabaseReady ? 'Supabase đã kết nối' : 'Cấu hình Cloud'}
+                {isSupabaseReady ? 'Supabase Cloud đã kết nối' : 'Cấu hình Cloud'}
               </span>
             </button>
           )}
@@ -266,10 +288,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       </header>
 
       {/* Main Authentication Centerpiece */}
-      <main className="max-w-xl w-full mx-auto my-auto py-8">
-        <div className="bg-white rounded-3xl shadow-xl shadow-blue-500/5 border border-slate-200/80 p-6 sm:p-10 space-y-7">
+      <main className="max-w-xl w-full mx-auto my-auto py-6">
+        <div className="bg-white rounded-3xl shadow-xl shadow-blue-500/5 border border-slate-200/80 p-6 sm:p-10 space-y-6">
           {/* Headline & Class Intro */}
-          <div className="text-center space-y-2.5">
+          <div className="text-center space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-100">
               <Sparkles className="w-3.5 h-3.5" />
               <span>{safeMeta.className} • GVCN {safeMeta.teacherName}</span>
@@ -280,51 +302,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </h1>
 
             <p className="text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-              Quản lý nề nếp, chuyên cần, liên lạc phụ huynh và quỹ lớp. Đăng nhập để bắt đầu phiên làm việc an toàn.
+              Tạo tài khoản hoặc đăng nhập dễ dàng chỉ với <strong>Tên đăng nhập</strong> và <strong>Mật khẩu</strong>, không cần tạo email.
             </p>
           </div>
 
-          {/* Quick Google Sign In Button */}
-          <div className="space-y-2">
-            <button
-              id="btn-login-screen-google"
-              onClick={handleGoogleClick}
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-3 py-3 px-5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-200 hover:border-blue-400 font-bold text-sm sm:text-base transition-all shadow-xs active:scale-[0.99] disabled:opacity-60 cursor-pointer"
-            >
-              {/* Google 4-Color Icon */}
-              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>{isLoading ? 'Đang kết nối Google...' : 'Đăng nhập nhanh với Google'}</span>
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="relative flex py-1 items-center">
-            <div className="grow border-t border-slate-200"></div>
-            <span className="shrink mx-4 text-xs font-medium text-slate-400 uppercase tracking-wider">
-              hoặc sử dụng Email & Mật khẩu
-            </span>
-            <div className="grow border-t border-slate-200"></div>
-          </div>
-
-          {/* Tab Navigation (Login vs Register) */}
+          {/* Tab Navigation (Login vs Register vs Reset) */}
           {activeTab !== 'forgot_password' ? (
             <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200/80">
               <button
@@ -334,13 +316,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   setActiveTab('login');
                   clearForm();
                 }}
-                className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   activeTab === 'login'
                     ? 'bg-white text-blue-700 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Đăng nhập
+                <LogIn className="w-4 h-4" />
+                <span>Đăng nhập</span>
               </button>
               <button
                 id="tab-auth-register"
@@ -349,13 +332,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   setActiveTab('register');
                   clearForm();
                 }}
-                className={`flex-1 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   activeTab === 'register'
                     ? 'bg-white text-blue-700 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Tạo tài khoản mới
+                <UserPlus className="w-4 h-4" />
+                <span>Tạo tài khoản mới</span>
               </button>
             </div>
           ) : (
@@ -371,7 +355,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Quay lại Đăng nhập</span>
               </button>
-              <span className="text-xs font-bold text-slate-700">Khôi phục mật khẩu</span>
+              <span className="text-xs font-bold text-slate-700">Đổi / Đặt lại mật khẩu</span>
             </div>
           )}
 
@@ -395,20 +379,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
           )}
 
-          {/* TAB 1: LOGIN FORM */}
+          {/* TAB 1: LOGIN FORM (Tên đăng nhập & Mật khẩu) */}
           {activeTab === 'login' && (
-            <form onSubmit={handleEmailLogin} className="space-y-4">
+            <form onSubmit={handleUsernameLogin} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">Email giáo viên</label>
+                <label className="block text-xs font-bold text-slate-700">
+                  Tên đăng nhập
+                </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    id="input-login-email"
-                    type="email"
+                    id="input-login-username"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="thayco@thpt.edu.vn hoặc gmail.com"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Ví dụ: admin, thaytin, giaovien9a2..."
+                    autoComplete="username"
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                 </div>
@@ -425,7 +412,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     }}
                     className="text-xs text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
                   >
-                    Quên mật khẩu?
+                    Quên / Đổi mật khẩu?
                   </button>
                 </div>
                 <div className="relative">
@@ -437,6 +424,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Nhập mật khẩu"
+                    autoComplete="current-password"
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <button
@@ -461,21 +449,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <span>Đang đăng nhập...</span>
                   </>
                 ) : (
-                  <span>Đăng nhập</span>
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    <span>Đăng nhập vào sổ</span>
+                  </>
                 )}
               </button>
             </form>
           )}
 
-          {/* TAB 2: REGISTER FORM */}
+          {/* TAB 2: REGISTER FORM (Chỉ cần Tên đăng nhập & Mật khẩu - Không cần Email) */}
           {activeTab === 'register' && (
-            <form onSubmit={handleEmailRegister} className="space-y-3.5">
+            <form onSubmit={handleUsernameRegister} className="space-y-3.5">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Tên đăng nhập mới <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="input-register-username"
+                    type="text"
+                    required
+                    minLength={3}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.replace(/\s+/g, ''))}
+                    placeholder="Viết liền không dấu cách, ví dụ: thaytin, cohuong..."
+                    autoComplete="username"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Không cần nhập địa chỉ email. Chỉ cần tên đăng nhập để truy cập bất kỳ lúc nào.
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
                   Họ và tên Thầy Cô <span className="text-slate-400 font-normal">(tùy chọn)</span>
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <GraduationCap className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="input-register-fullname"
                     type="text"
@@ -488,33 +502,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">Email giáo viên</label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    id="input-register-email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@thpt.edu.vn hoặc email cá nhân"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">Mật khẩu</label>
+                <label className="block text-xs font-bold text-slate-700">
+                  Mật khẩu <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="input-register-password"
                     type={showPassword ? 'text' : 'password'}
                     required
-                    minLength={6}
+                    minLength={3}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Tối thiểu 6 ký tự"
+                    placeholder="Nhập mật khẩu (tối thiểu 3 ký tự)"
+                    autoComplete="new-password"
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <button
@@ -528,17 +529,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">Xác nhận lại mật khẩu</label>
+                <label className="block text-xs font-bold text-slate-700">
+                  Xác nhận lại mật khẩu <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     id="input-register-confirm-password"
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
-                    minLength={6}
+                    minLength={3}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Nhập lại mật khẩu giống bên trên"
+                    autoComplete="new-password"
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                   <button
@@ -563,32 +567,83 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <span>Đang khởi tạo tài khoản...</span>
                   </>
                 ) : (
-                  <span>Tạo tài khoản giáo viên</span>
+                  <>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Tạo tài khoản & Vào sổ ngay</span>
+                  </>
                 )}
               </button>
             </form>
           )}
 
-          {/* TAB 3: FORGOT PASSWORD */}
+          {/* TAB 3: RESET PASSWORD BY USERNAME (Không cần email) */}
           {activeTab === 'forgot_password' && (
-            <form onSubmit={handleForgotPassword} className="space-y-4">
+            <form onSubmit={handleResetPassword} className="space-y-3.5">
               <p className="text-xs text-slate-500 leading-relaxed">
-                Nhập địa chỉ email Thầy Cô đã dùng để đăng ký. Hệ thống sẽ gửi một liên kết an toàn để đặt lại mật khẩu mới.
+                Nhập Tên đăng nhập của Thầy Cô và đặt mật khẩu mới trực tiếp, không cần gửi email xác nhận.
               </p>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">Email giáo viên</label>
+                <label className="block text-xs font-bold text-slate-700">Tên đăng nhập</label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    id="input-forgot-email"
-                    type="email"
+                    id="input-forgot-username"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@thpt.edu.vn"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Tên đăng nhập đã đăng ký (ví dụ: admin, thaytin...)"
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">Mật khẩu mới</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="input-forgot-new-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={3}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới"
+                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">Xác nhận mật khẩu mới</label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    id="input-forgot-confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    minLength={3}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới"
+                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -601,36 +656,75 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Đang gửi thư...</span>
+                    <span>Đang cập nhật mật khẩu...</span>
                   </>
                 ) : (
-                  <span>Gửi liên kết đặt lại mật khẩu</span>
+                  <span>Lưu mật khẩu mới</span>
                 )}
               </button>
             </form>
           )}
 
+          {/* Optional Divider & Google Quick Sign-in */}
+          <div className="relative flex py-1 items-center">
+            <div className="grow border-t border-slate-200"></div>
+            <span className="shrink mx-4 text-xs font-medium text-slate-400 uppercase tracking-wider">
+              hoặc
+            </span>
+            <div className="grow border-t border-slate-200"></div>
+          </div>
+
+          <div>
+            <button
+              id="btn-login-screen-google"
+              onClick={handleGoogleClick}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-blue-400 font-semibold text-sm transition-all shadow-2xs active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+            >
+              {/* Google 4-Color Icon */}
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>{isLoading ? 'Đang kết nối...' : 'Đăng nhập với Google'}</span>
+            </button>
+          </div>
+
           {/* Features highlight */}
-          <div className="border-t border-slate-100 pt-5 space-y-3">
+          <div className="border-t border-slate-100 pt-4 space-y-2.5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 text-center">
               Các tính năng cốt lõi cho giáo viên
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-slate-600">
-              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <Users className="w-4 h-4 text-blue-600 shrink-0" />
-                <span>Quản lý hồ sơ & danh sách 45 học sinh</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                <Users className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span>Quản lý hồ sơ học sinh</span>
               </div>
-              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <CalendarDays className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Điểm danh & thống kê chuyên cần</span>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                <CalendarDays className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Điểm danh & chuyên cần</span>
               </div>
-              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span>Theo dõi nề nếp, thi đua & khen thưởng</span>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Nề nếp, thi đua & kỷ luật</span>
               </div>
-              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                <BookOpen className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>Sổ liên lạc & nhắn tin phụ huynh</span>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-100">
+                <BookOpen className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Sổ liên lạc phụ huynh</span>
               </div>
             </div>
           </div>
@@ -638,7 +732,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       </main>
 
       {/* Footer */}
-      <footer className="max-w-6xl w-full mx-auto text-center text-xs text-slate-400 py-4">
+      <footer className="max-w-6xl w-full mx-auto text-center text-xs text-slate-400 py-2">
         <span>© {new Date().getFullYear()} Sổ tay điện tử Giáo viên chủ nhiệm • Bảo mật dữ liệu học đường</span>
       </footer>
     </div>

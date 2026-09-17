@@ -32,6 +32,7 @@ import {
   signInWithGoogle,
   AuthTeacher
 } from './utils/supabase';
+import { getCurrentAuthUser, setCurrentAuthUser } from './utils/accountAuth';
 import { Navbar } from './components/Navbar';
 import { LoginScreen } from './components/LoginScreen';
 import { ClassHeader } from './components/ClassHeader';
@@ -90,6 +91,13 @@ export default function App() {
 
   // Check current auth user on load & listen for auth state changes
   useEffect(() => {
+    // Check local username auth user first
+    const localUser = getCurrentAuthUser();
+    if (localUser) {
+      setCurrentUser(localUser);
+      setHasEnteredApp(true);
+    }
+
     if (isSupabaseConfigured()) {
       getAuthUser().then((user) => {
         if (user) {
@@ -98,8 +106,8 @@ export default function App() {
         }
       });
       const unsubscribe = onAuthChange((user) => {
-        setCurrentUser(user);
         if (user) {
+          setCurrentUser(user);
           setHasEnteredApp(true);
         }
       });
@@ -427,6 +435,7 @@ export default function App() {
     if (currentUser) {
       await signOutSupabase();
     }
+    setCurrentAuthUser(null);
     sessionStorage.removeItem('entered_app');
     setCurrentUser(null);
     setHasEnteredApp(false);
@@ -446,6 +455,7 @@ export default function App() {
           showToast={showToast}
           onAuthSuccess={(user) => {
             setCurrentUser(user);
+            setCurrentAuthUser(user);
             setHasEnteredApp(true);
             sessionStorage.setItem('entered_app', 'true');
           }}
