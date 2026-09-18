@@ -353,3 +353,52 @@ export const resetPasswordByUsername = async (
     message: `Đã đổi mật khẩu cho tài khoản "${cleanUsername}" thành công! Thầy Cô có thể đăng nhập ngay với mật khẩu mới.`,
   };
 };
+
+/**
+ * Đồng bộ toàn bộ tài khoản hiện có trong localStorage lên bảng teacher_accounts trên Supabase
+ */
+export const syncLocalAccountsToSupabase = async (): Promise<{ count: number; error?: string }> => {
+  if (!isSupabaseConfigured()) {
+    return { count: 0, error: 'Chưa cấu hình Supabase URL hoặc API Key' };
+  }
+  const client = getSupabaseClient();
+  if (!client) return { count: 0, error: 'Không thể khởi tạo Supabase Client' };
+
+  try {
+    const localAccounts = getStoredAccounts();
+    if (localAccounts.length === 0) return { count: 0 };
+
+    let syncedCount = 0;
+    for (const acc of localAccounts) {
+      // Kiểm tra xem đã có trên Supabase chưa
+      const { data: existing, error: checkError } = await client
+        .from('teacher_accounts')
+        .select('username')
+        .ilike('username', acc.username)
+        .maybeSingle();
+
+      if (checkError) {
+        // Có thể bảng chưa tồn tại
+        return { count: syncedCount, error: checkError.message };
+      }
+
+      if (!existing) {
+        const { error: insertError } = await client.from('teacher_accounts').insert({
+          id: acc.id,
+          username: acc.username,
+          password: acc.password,
+          full_name: acc.fullName,
+          created_at: acc.createdAt || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        if (!insertError) {
+          syncedCount++;
+        }
+      }
+    }
+    return { count: syncedCount };
+  } catch (err: any) {
+    return { count: 0, error: err?.message || 'Lỗi đồng bộ tài khoản' };
+  }
+};
+

@@ -2,12 +2,40 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppState } from './storage';
 
-// Lấy biến môi trường từ Vite
+// Lấy biến môi trường từ Vite hoặc cấu hình tùy chỉnh lưu trong localStorage
 const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
-const rawSupabaseUrl: string | undefined = env.VITE_SUPABASE_URL;
-const rawSupabaseAnonKey: string | undefined = env.VITE_SUPABASE_ANON_KEY;
+
+export const getCustomSupabaseConfig = (): { url: string; anonKey: string } => {
+  try {
+    const url = localStorage.getItem('CUSTOM_SUPABASE_URL') || '';
+    const anonKey = localStorage.getItem('CUSTOM_SUPABASE_ANON_KEY') || '';
+    return { url, anonKey };
+  } catch {
+    return { url: '', anonKey: '' };
+  }
+};
+
+export const setCustomSupabaseConfig = (url: string, anonKey: string) => {
+  try {
+    if (url && url.trim()) {
+      localStorage.setItem('CUSTOM_SUPABASE_URL', url.trim());
+    } else {
+      localStorage.removeItem('CUSTOM_SUPABASE_URL');
+    }
+    if (anonKey && anonKey.trim()) {
+      localStorage.setItem('CUSTOM_SUPABASE_ANON_KEY', anonKey.trim());
+    } else {
+      localStorage.removeItem('CUSTOM_SUPABASE_ANON_KEY');
+    }
+    clientInstance = null; // Reset cached client instance
+  } catch (e) {
+    console.error('Lỗi khi lưu cấu hình Supabase:', e);
+  }
+};
 
 export const getCleanSupabaseUrl = (): string => {
+  const custom = getCustomSupabaseConfig();
+  const rawSupabaseUrl = custom.url || env.VITE_SUPABASE_URL || '';
   if (!rawSupabaseUrl) return '';
   let url = rawSupabaseUrl.trim();
   // Loại bỏ dấu gạch chéo thừa ở cuối (nếu người dùng vô tình copy thừa)
@@ -18,7 +46,8 @@ export const getCleanSupabaseUrl = (): string => {
 };
 
 export const getCleanAnonKey = (): string => {
-  return (rawSupabaseAnonKey || '').trim();
+  const custom = getCustomSupabaseConfig();
+  return (custom.anonKey || env.VITE_SUPABASE_ANON_KEY || '').trim();
 };
 
 export const isSupabaseConfigured = (): boolean => {

@@ -375,7 +375,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               ) : (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               )}
-              <div className="flex-1">{statusMessage.text}</div>
+              <div className="flex-1 space-y-2">
+                <p>{statusMessage.text}</p>
+                {activeTab === 'login' && statusMessage.type === 'error' && statusMessage.text.includes('không tồn tại') && (
+                  <div>
+                    <button
+                      type="button"
+                      id="btn-switch-to-register-now"
+                      onClick={() => {
+                        setActiveTab('register');
+                        setConfirmPassword(password);
+                        setStatusMessage({
+                          type: 'info',
+                          text: `Đã chuyển sang tab Tạo tài khoản. Thầy Cô chỉ cần kiểm tra lại thông tin và bấm "Tạo tài khoản & Vào sổ ngay".`,
+                        });
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Bấm vào đây để tạo tài khoản "{username}" ngay</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

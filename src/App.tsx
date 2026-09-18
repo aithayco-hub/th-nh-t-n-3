@@ -74,6 +74,7 @@ export default function App() {
     return Boolean(sessionStorage.getItem('entered_app') === 'true');
   });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [supabaseConfigVersion, setSupabaseConfigVersion] = useState(0);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now().toString() + Math.random().toString(36).substring(2, 5);
@@ -463,6 +464,7 @@ export default function App() {
         <DatabaseSyncModal
           isOpen={isDbModalOpen}
           onClose={() => setIsDbModalOpen(false)}
+          onConfigChanged={() => setSupabaseConfigVersion((v) => v + 1)}
           currentState={{
             metadata,
             students,
@@ -673,6 +675,7 @@ export default function App() {
       <DatabaseSyncModal
         isOpen={isDbModalOpen}
         onClose={() => setIsDbModalOpen(false)}
+        onConfigChanged={() => setSupabaseConfigVersion((v) => v + 1)}
         currentState={{
           metadata,
           students,
